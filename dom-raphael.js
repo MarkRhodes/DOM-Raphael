@@ -43,13 +43,10 @@
     }
 
     function bindToTransitionEndForSingleRun($el, funcToExec, maxMSTillTransitionEnd) {
-		var firedFunc = false,
-            timeout;
-
+		var timeout;
 		var wrappedFunc = function () {
             clearTimeout(timeout);
             funcToExec();
-			firedFunc = true;
 			$el.unbind('webkitTransitionEnd', wrappedFunc);
 		};
 		$el.bind('webkitTransitionEnd', wrappedFunc);
