@@ -1,7 +1,7 @@
 DOM-Raphael
 ===========
 
-A drop-in replacement for Raphael which uses DOM elements and CSS3 transitions instead of SVG.  This was developed to allow a basic SVG to render effectively on iOS using hardware accelerated transitions.
+A replacement for Raphael which uses DOM elements and CSS3 transitions instead of SVG.  This was developed to allow a basic SVG to render effectively on iOS using hardware accelerated transitions.
 
 Current Limitations
 -------------
