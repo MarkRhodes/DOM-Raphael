@@ -48,7 +48,7 @@
     }
 
     function bindToTransitionEndForSingleRun($el, funcToExec, maxMSTillTransitionEnd) {
-    	var timeout, fired;
+		var timeout, fired;
 		var wrappedFunc = function () {
             if (fired) {
                 return; //should not happen.
@@ -79,6 +79,9 @@
     
     //Regex to remove "px" at the end of values..
     var pxRegEx = /px$/;
+    
+    //Small +ive constant which we set opacity to instead of 0 to avoid bug.. 
+    var opacityEpsilon = 0.0001;
 
     //Set of functions for all drawable elements..
     var elementFunctions = {
@@ -177,10 +180,10 @@
         //Note: currently only supports pixel values.
         _getSVGAttrs: function (attrsToGet) {
             var attrs = [],
-                $el = this.$el,
                 transformMatrix = this.transformMatrix,
+                elStyle = window.getComputedStyle(this.$el[0]),
                 self = this;
-            
+
             attrsToGet.forEach(function (attr) {
                 switch (attr) {
                 case "x":
@@ -196,13 +199,17 @@
                     attrs.push(transformMatrix.d);
                     break;
                 case "fill":
-                    attrs.push($el.css(self.type === "Text" ? "color" : "background-color"));
+                    attrs.push(elStyle[self.type === "Text" ? "color" : "background-color"]);
                     break;
                 case "stroke-width":
-                    attrs.push($el.css("border-width"));
+                    attrs.push(elStyle["border-width"]);
+                    break;
+                case "opacity":
+                    var opacity = elStyle.opacity;
+                    attrs.push(opacity === opacityEpsilon ? 0 : opacity);
                     break;
                 default:
-                    attrs.push($el.css(attr));
+                    attrs.push(elStyle[attr]);
                 }
             });
             
@@ -244,7 +251,7 @@
                     break;
                 case "opacity":
                     //don't allow zero as a valid value as it causes issues..
-                    css.opacity = value === 0 ? 0.001 : value;
+                    css.opacity = value === 0 ? opacityEpsilon : value;
                     break;
                 default:
                     css[attr] = value;
