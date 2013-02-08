@@ -20,37 +20,46 @@
     if (typeof define === 'function' && define.amd) {
         define(["jquery"], factory);
     } else {
-        factory(jQuery);
+        window.DOMRaphael = factory(jQuery);
     }
 })(function ($) {
     "use strict";
 
-    //Creates a new absolutely positioned jQuery obj at the given location and
-    //the given (optional) dimensions.
-    function createNewAbs$AtPos(x, y, width, height) {
-        var scaleX = typeof width === "undefined" ? 1 : width;
-        var scaleY = typeof height === "undefined" ? 1 : height;
+    //Creates a new absolutely positioned jQuery obj using the given transform matrix and
+    //optionally setting it dimensions to a 1px square..
+    function createNewAbs$AtPos(transformMatrix, setDimensions) {
         return $("<div>").css({
             position: "absolute",
             top: "0px",
             left: "0px",
-            width: (typeof width === "undefined") ? "" : "1px",
-            height: (typeof height === "undefined") ? "" : "1px",
+            width: setDimensions ? "1px" : "",
+            height: setDimensions ? "1px" : "",
             webkitTransformOrigin: "0 0",
-            webkitTransform: "translate3d(" + x + "px, " + y + "px, 0) scale( " + scaleX + ", " + scaleY + ")",
-            webkitBackfaceVisibility: "hidden" /* attempt to ensure hardware rendering for transitions */
+            webkitTransform: "" + transformMatrix
         });
+    }
+    
+    //Calculates and returns the transform matrix of the given DOM element, which should be attached
+    //to the DOM at the time of calculation.
+    function calculateTransformMatrix(x, y, width, height) {
+        width = typeof width === "undefined" ? 1 : width;
+        height = typeof height === "undefined" ? 1 : height;
+        return new WebKitCSSMatrix().translate(x, y).scale(width, height);
     }
 
     function bindToTransitionEndForSingleRun($el, funcToExec, maxMSTillTransitionEnd) {
-		var timeout;
+    	var timeout, fired;
 		var wrappedFunc = function () {
+            if (fired) {
+                return; //should not happen.
+            }
+            fired = true;
+            $el.unbind('webkitTransitionEnd', wrappedFunc);
             clearTimeout(timeout);
             funcToExec();
-			$el.unbind('webkitTransitionEnd', wrappedFunc);
 		};
 		$el.bind('webkitTransitionEnd', wrappedFunc);
-		timeout = setTimeout(wrappedFunc, maxMSTillTransitionEnd + 100);
+		timeout = setTimeout(wrappedFunc, maxMSTillTransitionEnd + 200);
 	}
 
     //Returns a new object which is the same as the original, but only contains the
@@ -111,26 +120,28 @@
                 $el = this.$el,
                 elStyle = $el[0].style;
             
-            /* transitioning to 0 can mean it just disappears instantly */
-            if (css.opacity === 0) {
-                css.opacity = 0.001; 
-            }
-
             var transitionStr = "";
             var first = true;
             $.each(filteredCss, function (prop) {
                 transitionStr += (first ? "" : ", ") + prop + " " + ms + "ms " + tween; 
                 first = false;
             });
-            elStyle.webkitTransition = transitionStr;  
-            $el.css(css); //trigger the transition..
+            elStyle.webkitTransition = transitionStr;
+            elStyle.webkitBackfaceVisibility = "hidden"; //attempt to switch to use hardware-rendering if not before..
 
-            if (onComplete) {
-                bindToTransitionEndForSingleRun($el, function () {
-                    elStyle.webkitTransition = ""; //prevent further changes causing animation..
+            setTimeout(function () {
+                //note: this little timeout hack is required for when the element is newly appended and
+                //      you've not run window.getComputedStyle on it - in this case alterations to the
+                //      transform matrix will not animate.
+                $el.css(css); //trigger the transition..
+            });
+            bindToTransitionEndForSingleRun($el, function () {
+                elStyle.webkitTransition = ""; //prevent further changes causing animation..
+                if (onComplete) {
                     onComplete();
-                }, ms);
-            }
+                }
+            }, ms);
+
             return this;
         },
         
@@ -167,26 +178,22 @@
         _getSVGAttrs: function (attrsToGet) {
             var attrs = [],
                 $el = this.$el,
-                self = this,
-                transformMatrix;
+                transformMatrix = this.transformMatrix,
+                self = this;
             
-            function getTransformMatrix() {
-                return transformMatrix = transformMatrix || self._getTransformMatrix();
-            }
-
             attrsToGet.forEach(function (attr) {
                 switch (attr) {
                 case "x":
-                    attrs.push(getTransformMatrix().e);
+                    attrs.push(transformMatrix.e);
                     break;
                 case "y":
-                    attrs.push(getTransformMatrix().f);
+                    attrs.push(transformMatrix.f);
                     break;
                 case "width":
-                    attrs.push(getTransformMatrix().a);
+                    attrs.push(transformMatrix.a);
                     break;
                 case "height":
-                    attrs.push(getTransformMatrix().d);
+                    attrs.push(transformMatrix.d);
                     break;
                 case "fill":
                     attrs.push($el.css(self.type === "Text" ? "color" : "background-color"));
@@ -211,7 +218,8 @@
                 transformMatrix;
                 
             function getTransformMatrix() {
-                return transformMatrix = transformMatrix || self._getTransformMatrix();
+                //clone a new copy if not done so..
+                return transformMatrix = transformMatrix || new WebKitCSSMatrix(self.transformMatrix);
             }
 
             $.each(attrs, function (attr, value) {
@@ -234,6 +242,10 @@
                 case "stroke-width":
                     css["border-width"] = value;
                     break;
+                case "opacity":
+                    //don't allow zero as a valid value as it causes issues..
+                    css.opacity = value === 0 ? 0.001 : value;
+                    break;
                 default:
                     css[attr] = value;
                 }
@@ -244,21 +256,20 @@
             }
             if (setValues) {
                 $el.css(css);
+                if (transformMatrix) {
+                    this.transformMatrix = transformMatrix;
+                }
                 return this;
             }
             return css;
-        },
-        
-        //Obtains the transform matrix that has been applied to this Element..
-        _getTransformMatrix: function () {
-            return new WebKitCSSMatrix(window.getComputedStyle(this.$el[0]).webkitTransform);
         }
-        
+
     };
 
     //Text class constructor..
     var Text = function (canvas, x, y, text) {
-        var $el = this.$el = createNewAbs$AtPos(x, y);
+        var transformMatrix = this.transformMatrix = calculateTransformMatrix(x, y);
+        var $el = this.$el = createNewAbs$AtPos(transformMatrix, false);
         this.id = nextElemId++;
         this.canvas = canvas;
         this.type = "Text";
@@ -302,7 +313,8 @@
 
     //Rectangle class contructor..
     var Rect = function (canvas, x, y, width, height) {
-        var $el = this.$el = createNewAbs$AtPos(x, y, width, height);
+        var transformMatrix = this.transformMatrix = calculateTransformMatrix(x, y, width, height);
+        var $el = this.$el = createNewAbs$AtPos(transformMatrix, true);
         this.id = nextElemId++;
         this.canvas = canvas;
         this.type = "Rect";
@@ -361,10 +373,6 @@
             height: height + "px",
             overflow: "hidden"
         });
-        
-        //TODO: remove - for debugging..
-        window.paper = this;
-
     };
     Canvas.prototype = {
     
@@ -412,10 +420,6 @@
         }
         return true;
     };
-    
-    //TODO: for debugging..
-    window.DOMRaphael = DOMRaphael;
-    window.Set = Set;
     
     return DOMRaphael;
 });
