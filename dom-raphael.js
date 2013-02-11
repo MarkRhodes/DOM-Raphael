@@ -201,6 +201,9 @@
                 case "fill":
                     attrs.push(elStyle[self.type === "Text" ? "color" : "background-color"]);
                     break;
+                case "stroke":
+                    attrs.push(elStyle["border-color"]);
+                    break;
                 case "stroke-width":
                     attrs.push(elStyle["border-width"]);
                     break;
@@ -245,6 +248,9 @@
                     break;
                 case "fill":
                     css[self.type === "Text" ? "color" : "background-color"] = value;
+                    break;
+                case "stroke":
+                    css["border-color"] = value;
                     break;
                 case "stroke-width":
                     css["border-width"] = value;
